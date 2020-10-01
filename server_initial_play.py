@@ -41,3 +41,5 @@ def play_rps(game_server_url: str, netid: str, player_key: str):
 
     print(request_match.text)
     match_id = request_match.json()['result']['match_id']
+    
+    return
