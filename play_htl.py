@@ -1,7 +1,13 @@
 # local
 import argparse
 import gamestate
+import json
 import line
+import re
+import requests
+
+from time import sleep
+from ast import literal_eval
 
 
 class Opponent:
@@ -9,8 +15,104 @@ class Opponent:
     def receive_move(self, move: line.Line):
         raise NotImplementedError()
 
+
     def return_move(self, game: gamestate.HoldThatLine):
         raise NotImplementedError()
+
+
+class NetworkOpponent:
+
+    def __init__(self, game_server_url, netid, player_key):
+        self.request_session = requests.Session()
+        self.request_session.headers = {"Connection": "close"}
+        self.game_server_url = game_server_url
+        self.netid = netid
+        self.player_key = player_key
+        self.match_id = -1
+
+
+    def receive_move(self, move: line.Line):
+        pass
+
+
+    def return_move(self):
+        # wait for my turn:
+        while True:
+            print('\n\nrequesting await-turn now.')
+            await_turn = self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/await-turn")
+            print(await_turn.text)
+            try:
+                result = await_turn.json()["result"]
+            except json.decoder.JSONDecodeError:
+                print('Unexpected Server Response. Not valid JSON.')
+                sleep(15)
+                continue  # try again after a wait.  Is this a temporary server problem or a client bug?
+
+            print('Update on previous move(s): ' + json.dumps(result))
+            if result["match_status"] == "in play":
+                turn_status = result["turn_status"]
+                if turn_status == "your turn":
+                    # Yea! There was much rejoicing.
+
+                    # TODO - write logic to fetch the move made by the other user
+                    prev_move = result['history']['move']
+                    try:
+                        start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
+                    except SyntaxError:
+                        # TODO - write logic to dispute the move
+                        return
+
+                    # TODO - write logic to update the game state with this move
+
+                    break  # exit the while loop.
+                if "Timed out" in turn_status:
+                    print('PZ-server said it timed out while waiting for my turn to come up...')
+                print('waiting for my turn...')
+                sleep(3)
+                continue
+            elif result["match_status"] in ["game over", "scored, final"]:
+                print('game over', result)
+                return
+            elif result["match_status"] == "awaiting more player(s)":
+                print('match has not started yet. sleeping a bit...')
+                sleep(5)
+            else:
+                raise ValueError('Unexpected match_status: ' + result["match_status"])
+
+
+    def setup(self):
+        # query the available game_types to find the Hold That Line(HTL) id:
+        game_search = self.request_session.get(url=self.game_server_url + "game-types",
+                                               json={"netid": self.netid,
+                                                     "player_key": self.player_key})
+
+        try:
+            result = game_search.json()['result']
+        except Exception as e:
+            print('unexpected response:')
+            print(game_search.content)
+            print('\nfollowed by exception:' + str(e))
+            return
+
+        # Fetching Game ID
+        game_id = False
+        for g in result:
+            if (g['category'] == 'hold_that_line' or 'line' in g['fullname'].lower()) and g['num_players'] == 2:
+                game_id = g['id']
+
+        if game_id:
+            print('Found matching game-type: ', game_id)
+        else:
+            print('Game not available now.')
+            exit()
+
+        # Now request a single match of that game type:
+        request_match = self.request_session.post(url=self.game_server_url + "game-type/{}/request-match"
+                                                  .format(game_id),
+                                                  json={"netid": self.netid,
+                                                        "player_key": self.player_key})
+
+        self.match_id = request_match.json()['result']['match_id']
 
 
 class HumanOpponent(Opponent):
@@ -20,6 +122,7 @@ class HumanOpponent(Opponent):
             print('Computer has won.')
         else:
             print(f'Computer last move: {(move.start, move.end)}')
+
 
     def return_move(self, game: gamestate.HoldThatLine):
         legal_moves = game.generate_moves()
@@ -72,7 +175,7 @@ class HumanOpponent(Opponent):
             return move
 
 
-def main(mode='human'):
+def main(mode='human', **kwargs):
     opponent = None
     if mode == 'human':
         print('Human input selected.')
@@ -106,8 +209,15 @@ def main(mode='human'):
             break
 
     elif mode == 'network':
-        print('Network behavior not yet implemented.')
-        exit()
+
+        opponent = NetworkOpponent('https://jweible.web.illinois.edu/pz-server/games/', 'adarsha2', '4dbf0de4cd09')
+        opponent.setup()
+
+        h = w = 4
+
+        # TODO - remaining logic
+
+
     else:
         raise ValueError(f'Invalid mode "{mode}"')
 
@@ -146,11 +256,11 @@ def main(mode='human'):
 
 if __name__ == '__main__':
     desc = 'Simulate a game of Hold-That-Line, either over the network or with human input'
-    parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('mode', type=str, choices=['human', 'network'],
-                        help='Whether to play with human or network input')
-    args = parser.parse_args()
-    main(mode=args.mode)
+    # parser = argparse.ArgumentParser(description=desc)
+    # parser.add_argument('mode', type=str, choices=['human', 'network'],help='Whether to play with human or network input')
+    # args = parser.parse_args()
+    # main(mode=args.mode)
+    main(mode='network')
 
 
     # # Fetching user input for board width, height and game mode
