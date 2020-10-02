@@ -1,4 +1,5 @@
 # stdlib
+import itertools
 import random
 import fractions
 from typing import Tuple, List, Union
@@ -21,6 +22,14 @@ class HoldThatLine:
 
         :return: A list of Line objects representing possible moves
         """
+        # TODO: factorial time - should be fixed
+        if self.endpoints is None:
+            start = None
+            end = None
+            coords = itertools.product(range(self.height), range(self.width))
+            possible_lines = itertools.combinations(coords, r=2)
+            return [Line(l[0], l[1]) for l in possible_lines]
+
         moves = []
         # iterate through each endpoint and every legal destination on the board
         for endpoint in self.endpoints:
@@ -48,13 +57,14 @@ class HoldThatLine:
             return False
 
         # is it from an endpoint?
-        from_endpoint = False
-        for endpoint in self.endpoints:
-            if endpoint == move.start:
-                from_endpoint = True
-                break
-        if not from_endpoint:
-            return False
+        if self.endpoints is not None:
+            from_endpoint = False
+            for endpoint in self.endpoints:
+                if endpoint == move.start:
+                    from_endpoint = True
+                    break
+            if not from_endpoint:
+                return False
 
         # does it intersect with any line at any point besides the endpoint its drawn from?
         for line in self.lines:
@@ -79,13 +89,10 @@ class HoldThatLine:
             # For each move, we simulate a temporary board state in which the move has been made
             temp_board = HoldThatLine(self.height, self.width)
             temp_lines = self.lines.copy()
-            temp_endpoints = self.endpoints.copy()
-            temp_lines.append(move)
-            for i in range(2):
-                if temp_endpoints[i] == move.start:
-                    temp_endpoints[i] = move.end
+            temp_endpoints = self.endpoints.copy() if self.endpoints else None
             temp_board.lines = temp_lines
             temp_board.endpoints = temp_endpoints
+            temp_board.make_move(move)
 
             # Figure out the number of moves left in the game
             seen = set()
@@ -139,20 +146,20 @@ class HoldThatLine:
             else:
                 return None
 
-    def make_move(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
-        move = Line(start, end)
+    def make_move(self, move: Line) -> bool:
         if self.check_move(move):
             if self.endpoints is None:
-                midpoint = (fractions.Fraction((start[0] + end[0]) / 2), fractions.Fraction((start[1] + end[1]) / 2))
-                for point in start, end:
+                midpoint = (fractions.Fraction((move.start[0] + move.end[0]) / 2),
+                            fractions.Fraction((move.start[1] + move.end[1]) / 2))
+                for point in move.start, move.end:
                     half_move = Line(midpoint, point)
                     self.lines.append(half_move)
-                self.endpoints = [start, end]
+                self.endpoints = [move.start, move.end]
             else:
                 self.lines.append(move)
                 for i in range(2):
-                    if self.endpoints[i] == start:
-                        self.endpoints[i] = end
+                    if self.endpoints[i] == move.start:
+                        self.endpoints[i] = move.end
             return True
         else:
             return False
