@@ -7,10 +7,10 @@ import line
 class Opponent:
 
     def receive_move(self, move: line.Line):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def return_move(self, game: gamestate.HoldThatLine):
-        raise NotImplementedError
+        raise NotImplementedError()
 
 
 class HumanOpponent(Opponent):
@@ -69,11 +69,7 @@ class HumanOpponent(Opponent):
                 print('Input could not be evaluated as a line. Please input again.')
                 continue
 
-            if not game.check_move(move):
-                print('Invalid move. Please input again.')
-                continue
-
-            return line.Line(start, end)
+            return move
 
 
 def main(mode='human'):
@@ -126,7 +122,17 @@ def main(mode='human'):
                 game.make_move(move)
                 opponent.receive_move(move)
         else:
-            move = opponent.return_move(game)
+            valid = False
+            while not valid:
+                move = opponent.return_move(game)
+                if move is not None:
+                    valid = game.check_move(move) or move is None
+                else:
+                    valid = True
+
+                if not valid:
+                    print('Invalid move. Prompting opponent for correction.')  # TODO: Figure out what happens if the network gives us a bad move
+
             if move is None:
                 in_play = False
             else:
