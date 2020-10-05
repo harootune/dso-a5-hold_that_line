@@ -29,10 +29,28 @@ class NetworkOpponent:
         self.netid = netid
         self.player_key = player_key
         self.match_id = -1
+        self.turn = 1
 
 
-    def receive_move(self, move: line.Line):
-        pass
+    def receive_move(self, game: gamestate.HoldThatLine):
+        legal_moves = game.generate_moves()
+        if not legal_moves:
+            print('You have won.')
+            return None
+
+        print(f'Current lines: {[(l.start, l.end) for l in game.lines]}')
+        print(f'Current endpoints: {game.endpoints}')
+        print(f'Possible moves: {[(l.start, l.end) for l in legal_moves] if game.endpoints else "Any"}')
+
+        while True:
+            this_pc_move = make_this_pc_move(game)
+            if game.check_move(this_pc_move):
+                this_pc_move_str = f"{str(this_pc_move.start)},{str(this_pc_move.end)}"
+                self.request_session.post(url=self.game_server_url + f"match/{self.match_id}/move", json={'move': this_pc_move_str})
+                self.turn += 1
+                return this_pc_move
+            else:
+                print('Invalid Move. Try again')
 
 
     def return_move(self):
@@ -54,30 +72,47 @@ class NetworkOpponent:
                 if turn_status == "your turn":
                     # Yea! There was much rejoicing.
 
-                    # TODO - write logic to fetch the move made by the other user
-                    prev_move = result['history']['move']
+                    # Fetching move made by other user
+                    prev_move = result['history'][0]
                     try:
                         start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
+                        move = line.Line(start, end)
+                        print(f'Opponent Last Move : {(start, end)}')
+                        return move
+
                     except SyntaxError:
-                        # TODO - write logic to dispute the move
-                        return
+                        # Disputing the move
+                        self.request_session.post(
+                            url=self.game_server_url + f"match/{self.match_id}/dispute-last-turn-by/{self.netid}")
+                        continue
 
-                    # TODO - write logic to update the game state with this move
-
-                    break  # exit the while loop.
                 if "Timed out" in turn_status:
                     print('PZ-server said it timed out while waiting for my turn to come up...')
                 print('waiting for my turn...')
                 sleep(3)
                 continue
             elif result["match_status"] in ["game over", "scored, final"]:
-                print('game over', result)
+                players = self.fetch_game_players()
+                winner = next(player for player in players if player['win_lose_draw'] == 'W')['netid']
+                print(f'Game Over! Winner is : {winner}')
                 return
             elif result["match_status"] == "awaiting more player(s)":
                 print('match has not started yet. sleeping a bit...')
                 sleep(5)
+            elif result['match_status'] == 'under review':
+                # TODO - /resolve-disputed-turn logic
+                print('move is in review!')
+                sleep(5)
             else:
                 raise ValueError('Unexpected match_status: ' + result["match_status"])
+
+
+    def fetch_game_history(self):
+        return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
+
+
+    def fetch_game_players(self):
+        return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['players']
 
 
     def setup(self):
@@ -134,49 +169,42 @@ class HumanOpponent(Opponent):
         print(f'Current endpoints: {game.endpoints}')
         print(f'Possible moves: {[(l.start, l.end) for l in legal_moves] if game.endpoints else "Any"}')
 
+        return make_this_pc_move(game)
+
+
+def make_this_pc_move(game: gamestate.HoldThatLine):
+    while True:
+
+        # Input Move
         while True:
-            # input start
-            while True:
-                try:
-                    start = input('Enter move start point (comma-separated - height,width): ').strip().split(',')
-                    i = int(start[0])
-                    j = int(start[1])
-                    start = i, j
+            try:
+                move_input = input('Enter move points (comma-separated - (x1,y1),(x2,y2)): ')
+                start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, move_input).groups())
+                if type(start) == 'tuple' or type(end) == 'tuple':
                     if game.endpoints is not None:
                         if start not in game.endpoints:
                             print('Start coordinate must be a current endpoint. Please input again.')
                             continue
-                except ValueError:
-                    print('Invalid start coordinate. Please input again.')
-                    continue
-                break
-
-            # input end
-            while True:
-                try:
-                    end = input('Enter move end point (comma-separated - height,width): ').strip().split(',')
-                    i = int(end[0])
-                    j = int(end[1])
-                    end = i, j
-                    if end == start:
+                    elif end == start:
                         print('End coordinate cannot be same as start coordinate. Please input again.')
                         continue
-                except ValueError:
-                    print('Invalid end coordinate. Please input again.')
-                    continue
-                break
-
-            try:
-                move = line.Line(start, end)
-            except ValueError:
-                print('Input could not be evaluated as a line. Please input again.')
+                else:
+                    print('Invalid Input Type - Please use tuples!')
+            except SyntaxError:
+                print('Invalid Move Input')
                 continue
+            break
 
-            return move
+        try:
+            move = line.Line(start, end)
+        except ValueError:
+            print('Input could not be evaluated as a line. Please input again.')
+            continue
+
+        return move
 
 
-def main(mode='human', **kwargs):
-    opponent = None
+def main(mode='human'):
     if mode == 'human':
         print('Human input selected.')
         opponent = HumanOpponent()
@@ -208,50 +236,83 @@ def main(mode='human', **kwargs):
                 continue
             break
 
+        game = gamestate.HoldThatLine(h, w)
+        in_play = True
+        while in_play:
+            if comp_turn:
+                move = game.pick_move()
+                if move is None:
+                    in_play = False
+                else:
+                    game.make_move(move)
+                    opponent.receive_move(move)
+            else:
+                valid = False
+                while not valid:
+                    move = opponent.return_move(game)
+                    if move is not None:
+                        valid = game.check_move(move) or move is None
+                    else:
+                        valid = True
+
+                    if not valid:
+                        print('Invalid move. Prompting opponent for correction.')  # TODO: Figure out what happens if the network gives us a bad move
+
+                if move is None:
+                    in_play = False
+                else:
+                    game.make_move(move)
+
+            if in_play:
+                comp_turn = not comp_turn
+
+        print(f'{"Computer" if comp_turn else "Opponent"} wins.')
+
     elif mode == 'network':
 
-        opponent = NetworkOpponent('https://jweible.web.illinois.edu/pz-server/games/', 'adarsha2', '4dbf0de4cd09')
+        netid = 'adarsha2'
+        player_key = '4dbf0de4cd09'
+        game_server_url = 'https://jweible.web.illinois.edu/pz-server/games/'
+        opponent = NetworkOpponent(game_server_url, netid, player_key)
         opponent.setup()
 
         h = w = 4
+        game = gamestate.HoldThatLine(h, w)
 
-        # TODO - remaining logic
+        game_history = opponent.fetch_game_history()
+        if game_history:
+            for move in sorted(game_history, key=lambda x: x['turn']):
+                start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, move['move']).groups())
+                move = line.Line(start, end)
+                game.make_move(move)
+                opponent.turn += 1
 
+        in_play = True
+        while in_play:
+
+            opponent_move = opponent.return_move()
+            if game.check_move(opponent_move):
+                game.make_move(opponent_move)
+                opponent.turn += 1
+            else:
+                # Disputing the move
+                opponent.request_session.post(
+                    url=game_server_url + f"match/{opponent.match_id}/dispute-last-turn-by/{netid}")
+                continue
+
+            if opponent_move is None:
+                in_play = False
+
+            this_pc_move = opponent.receive_move(game)
+            if this_pc_move is None:
+                in_play = False
+
+        players = opponent.fetch_game_players()
+        winner = next(player for player in players if player['win_lose_draw'] == 'W')['netid']
+        print(f"{winner} Wins!")
 
     else:
         raise ValueError(f'Invalid mode "{mode}"')
-
-    game = gamestate.HoldThatLine(h, w)
-    in_play = True
-    while in_play:
-        if comp_turn:
-            move = game.pick_move()
-            if move is None:
-                in_play = False
-            else:
-                game.make_move(move)
-                opponent.receive_move(move)
-        else:
-            valid = False
-            while not valid:
-                move = opponent.return_move(game)
-                if move is not None:
-                    valid = game.check_move(move) or move is None
-                else:
-                    valid = True
-
-                if not valid:
-                    print('Invalid move. Prompting opponent for correction.')  # TODO: Figure out what happens if the network gives us a bad move
-
-            if move is None:
-                in_play = False
-            else:
-                game.make_move(move)
-
-        if in_play:
-            comp_turn = not comp_turn
-
-    print(f'{"Computer" if comp_turn else "Opponent"} wins.')
 
 
 if __name__ == '__main__':
@@ -261,27 +322,3 @@ if __name__ == '__main__':
     # args = parser.parse_args()
     # main(mode=args.mode)
     main(mode='network')
-
-
-    # # Fetching user input for board width, height and game mode
-    # while True:
-    #     try:
-    #         h, w = tuple(int(x.strip()) for x in input('Enter Board Dimensions (comma-separated - height,width): ').split(','))
-    #         if w <= 0 or h <= 0:
-    #             print('Invalid Board Dimensions')
-    #             continue
-    #     except ValueError:
-    #         print('Invalid Board Dimensions')
-    #         continue
-    #     break
-    #
-    # while True:
-    #     mode = input('Enter game mode (c - computer/s - server): ').lower()
-    #     if mode not in ['c', 's']:
-    #         print('Invalid Game Mode')
-    #         continue
-    #     break
-    #
-    # print(h, w, mode)
-    # winner = play_game(mode=mode)
-    # print(f'Game Winner is {winner}')
