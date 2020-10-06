@@ -38,9 +38,59 @@ class NetworkOpponent:
 
     def receive_move(self, move: line.Line):
         this_pc_move_str = f"{str(move.start)},{str(move.end)}"
-        self.request_session.post(url=self.game_server_url + f"match/{self.match_id}/move", json={'move': this_pc_move_str})
-        print(f"Computer playing the move: {(move.start, move.end)}")
-        self.turn += 1
+        while True:
+            print('\n\nrequesting await-turn now.')
+            await_turn = self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/await-turn")
+            try:
+                result = await_turn.json()["result"]
+            except json.decoder.JSONDecodeError:
+                print('Unexpected Server Response. Not valid JSON.')
+                sleep(15)
+                continue
+
+            if result["match_status"] == "in play":
+                turn_status = result["turn_status"]
+                print(turn_status)
+                if turn_status == "your turn":  # TODO: Check what happens if opp move
+                    # Yea! There was much rejoicing.
+                    result_text = self.request_session.post(url=self.game_server_url + f"match/{self.match_id}/move",
+                                                       json={'move': this_pc_move_str})
+                    print(f"Computer playing the move: {(move.start, move.end)}")
+                    print(f'Result: {result_text.text}')
+                    self.turn += 1
+                    break
+
+                    # Fetching move made by other user
+                    # history = sorted(result['history'], key=lambda x: x['turn'], reverse=True)
+                    # if history:
+                    #     prev_move = history[0]['move']
+                    #     start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
+                    #     move = line.Line(start, end)
+                    #     print(f'Opponent Last Move : {(start, end)}')
+                    #     return move
+                    # continue
+
+                if "Timed out" in turn_status:
+                    print('PZ-server said it timed out while waiting for my turn to come up...')
+                print('waiting for my turn...')
+                sleep(3)
+                continue
+            elif result["match_status"] in ["game over", "scored, final"]:
+                players = self.fetch_game_players()
+                winner = next(player for player in players if player['win_lose_draw'] == 'W')['netid']
+                print(f'Game Over! Winner is : {winner}')
+                return
+            elif result["match_status"] == "awaiting more player(s)":
+                print('match has not started yet. sleeping a bit...')
+                sleep(5)
+            elif result['match_status'] == 'under review':
+                # TODO - /resolve-disputed-turn logic
+                print('move is in review!')
+                sleep(5)
+            else:
+                raise ValueError('Unexpected match_status: ' + result["match_status"])
+
+
 
 
     def return_move(self, game: gamestate.HoldThatLine):
@@ -236,8 +286,8 @@ def main(mode='human'):
             break
 
     elif mode == 'network':
-        netid = 'adarsha2'
-        player_key = 'b8587ad6ce78'
+        netid = 'dhotis2'
+        player_key = '041b1a48349a'
         game_server_url = 'https://jweible.web.illinois.edu/pz-server/games/'
         opponent = NetworkOpponent(game_server_url, netid, player_key)
         opponent.setup()
@@ -277,16 +327,20 @@ def main(mode='human'):
     in_play = True
     while in_play:
         if comp_turn:
+            print('Computer Turn')
             move = game.pick_move()
             if move is None:
                 in_play = False
             else:
+                print(f'Move: {(move.start, move.end) if move else "{}"}')
                 game.make_move(move)
                 opponent.receive_move(move)
         else:
+            print('Opponent Turn')
             valid = False
             while not valid:
                 move = opponent.return_move(game)
+                print(f'Move: {(move.start, move.end) if move else "{}"}')
                 if move is not None:
                     valid = game.check_move(move) or move is None
                 else:
