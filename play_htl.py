@@ -40,7 +40,7 @@ class NetworkOpponent:
         self.turn += 1
 
 
-    def return_move(self):
+    def return_move(self, game: gamestate.HoldThatLine):
         # wait for my turn:
         while True:
             print('\n\nrequesting await-turn now.')
@@ -165,7 +165,7 @@ class HumanOpponent(Opponent):
                 try:
                     move_input = input('Enter move points (comma-separated - (x1,y1),(x2,y2)): ')
                     start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, move_input).groups())
-                    if type(start) == 'tuple' or type(end) == 'tuple':  # isinstance
+                    if isinstance(start, tuple) and isinstance(end, tuple):  # isinstance
                         if game.endpoints is not None:
                             if start not in game.endpoints:
                                 print('Start coordinate must be a current endpoint. Please input again.')
@@ -227,8 +227,8 @@ def main(mode='human'):
             break
 
     elif mode == 'network':
-        netid = 'adarsha2'
-        player_key = '4dbf0de4cd09'
+        netid = 'dhotis2'
+        player_key = '2ab8de3150ab'
         game_server_url = 'https://jweible.web.illinois.edu/pz-server/games/'
         opponent = NetworkOpponent(game_server_url, netid, player_key)
         opponent.setup()
