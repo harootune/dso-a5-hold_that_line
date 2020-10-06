@@ -39,6 +39,7 @@ class NetworkOpponent:
     def receive_move(self, move: line.Line):
         this_pc_move_str = f"{str(move.start)},{str(move.end)}"
         self.request_session.post(url=self.game_server_url + f"match/{self.match_id}/move", json={'move': this_pc_move_str})
+        print(f"Computer playing the move: {(move.start, move.end)}")
         self.turn += 1
 
 
@@ -47,7 +48,6 @@ class NetworkOpponent:
         while True:
             print('\n\nrequesting await-turn now.')
             await_turn = self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/await-turn")
-            print(await_turn.text)
             try:
                 result = await_turn.json()["result"]
             except json.decoder.JSONDecodeError:
