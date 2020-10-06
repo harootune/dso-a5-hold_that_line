@@ -28,7 +28,7 @@ class NetworkOpponent:
 
     def __init__(self, game_server_url, netid, player_key):
         self.request_session = requests.Session()
-        self.request_session.headers = {"Connection": "close"}
+        self.request_session.headers = {"Connection": "close", "Content-Type": "application/json"}
         self.game_server_url = game_server_url
         self.netid = netid
         self.player_key = player_key
@@ -58,15 +58,20 @@ class NetworkOpponent:
             print('Update on previous move(s): ' + json.dumps(result))
             if result["match_status"] == "in play":
                 turn_status = result["turn_status"]
+                print(turn_status)
                 if turn_status == "your turn":
                     # Yea! There was much rejoicing.
 
                     # Fetching move made by other user
-                    prev_move = result['history'][0]
-                    start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
-                    move = line.Line(start, end)
-                    print(f'Opponent Last Move : {(start, end)}')
-                    return move
+                    history = sorted(result['history'], key=lambda x: x['turn'], reverse=True)
+                    if history:
+                        prev_move = history[0]['move']
+                        print(history, prev_move)
+                        start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
+                        move = line.Line(start, end)
+                        print(f'Opponent Last Move : {(start, end)}')
+                        return move
+                    continue
 
                 if "Timed out" in turn_status:
                     print('PZ-server said it timed out while waiting for my turn to come up...')
@@ -90,10 +95,7 @@ class NetworkOpponent:
 
 
     def fetch_game_history(self):
-        try:
-            return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
-        except Exception:
-            return []
+        return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
 
 
     def fetch_game_players(self):
@@ -248,16 +250,19 @@ def main(mode='human'):
                 opponent.turn += 1
 
         players = opponent.fetch_game_players()
-        for player in players:
-            if player['netid'] == netid:
-                order = player['player_order']
-                break
+        if players:
+            for player in players:
+                if player['netid'] == netid:
+                    order = player['player_order']
+                    break
 
-        is_odd = order % 2  # TODO: Pass on logic
-        if opponent.turn % 2:
-            comp_turn = is_odd
+            is_odd = order % 2  # TODO: Pass on logic
+            if opponent.turn % 2:
+                comp_turn = is_odd
+            else:
+                comp_turn = not is_odd
         else:
-            comp_turn = not is_odd
+            comp_turn = False
 
     else:
         print('no')
