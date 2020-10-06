@@ -15,8 +15,10 @@ class Opponent:
     def receive_move(self, move: line.Line):
         raise NotImplementedError()
 
+
     def return_move(self, game: gamestate.HoldThatLine):
         raise NotImplementedError()
+
 
     def dispute_move(self, move: line.Line):
         raise NotImplementedError()
@@ -61,17 +63,10 @@ class NetworkOpponent:
 
                     # Fetching move made by other user
                     prev_move = result['history'][0]
-                    try:
-                        start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
-                        move = line.Line(start, end)
-                        print(f'Opponent Last Move : {(start, end)}')
-                        return move
-
-                    except SyntaxError:
-                        # Disputing the move
-                        self.request_session.post(
-                            url=self.game_server_url + f"match/{self.match_id}/dispute-last-turn-by/{self.netid}")
-                        continue
+                    start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
+                    move = line.Line(start, end)
+                    print(f'Opponent Last Move : {(start, end)}')
+                    return move
 
                 if "Timed out" in turn_status:
                     print('PZ-server said it timed out while waiting for my turn to come up...')
@@ -95,7 +90,10 @@ class NetworkOpponent:
 
 
     def fetch_game_history(self):
-        return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
+        try:
+            return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
+        except Exception:
+            return []
 
 
     def fetch_game_players(self):
@@ -145,6 +143,7 @@ class HumanOpponent(Opponent):
         else:
             print(f'Computer last move: {(move.start, move.end)}')
 
+
     def return_move(self, game: gamestate.HoldThatLine):
         legal_moves = game.generate_moves()
         if not legal_moves:
@@ -157,7 +156,9 @@ class HumanOpponent(Opponent):
 
         return self.make_this_pc_move(game)
 
-    def make_this_pc_move(self, game: gamestate.HoldThatLine):  # This should be in human opponent
+
+    @staticmethod
+    def make_this_pc_move(game: gamestate.HoldThatLine):  # This should be in human opponent
         while True:
 
             # Input Move
@@ -187,6 +188,7 @@ class HumanOpponent(Opponent):
                 continue
 
             return move
+
 
     def dispute_move(self, move: line.Line):
         print('Move disputed.')
@@ -227,8 +229,8 @@ def main(mode='human'):
             break
 
     elif mode == 'network':
-        netid = 'dhotis2'
-        player_key = '2ab8de3150ab'
+        netid = 'adarsha2'
+        player_key = 'b8587ad6ce78'
         game_server_url = 'https://jweible.web.illinois.edu/pz-server/games/'
         opponent = NetworkOpponent(game_server_url, netid, player_key)
         opponent.setup()
