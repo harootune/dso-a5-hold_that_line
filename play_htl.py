@@ -66,7 +66,6 @@ class NetworkOpponent:
                     history = sorted(result['history'], key=lambda x: x['turn'], reverse=True)
                     if history:
                         prev_move = history[0]['move']
-                        print(history, prev_move)
                         start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
                         move = line.Line(start, end)
                         print(f'Opponent Last Move : {(start, end)}')
@@ -95,11 +94,17 @@ class NetworkOpponent:
 
 
     def fetch_game_history(self):
-        return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
+        try:
+            return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
+        except Exception:
+            return []
 
 
     def fetch_game_players(self):
-        return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['players']
+        try:
+            return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['players']
+        except Exception:
+            return []
 
 
     def setup(self):
@@ -262,7 +267,7 @@ def main(mode='human'):
             else:
                 comp_turn = not is_odd
         else:
-            comp_turn = False
+            comp_turn = True
 
     else:
         print('no')
