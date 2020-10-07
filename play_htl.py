@@ -15,10 +15,8 @@ class Opponent:
     def receive_move(self, move: line.Line):
         raise NotImplementedError()
 
-
     def return_move(self, game: gamestate.HoldThatLine):
         raise NotImplementedError()
-
 
     def dispute_move(self, move: line.Line):
         raise NotImplementedError()
@@ -35,24 +33,14 @@ class NetworkOpponent:
         self.match_id = -1
         self.turn = 1
 
-
     def receive_move(self, move: line.Line):
         this_pc_move_str = f"{str(move.start)},{str(move.end)}"
         while True:
-            print('\n\nrequesting await-turn now.')
-            await_turn = self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/await-turn")
-            try:
-                result = await_turn.json()["result"]
-            except json.decoder.JSONDecodeError:
-                print('Unexpected Server Response. Not valid JSON.')
-                sleep(15)
-                continue
-
+            result = self._retrieve_current_info()
             if result["match_status"] == "in play":
                 turn_status = result["turn_status"]
                 print(turn_status)
                 if turn_status == "your turn":  # TODO: Check what happens if opp move
-                    # Yea! There was much rejoicing.
                     result_text = self.request_session.post(url=self.game_server_url + f"match/{self.match_id}/move",
                                                        json={'move': this_pc_move_str})
                     print(f"Computer playing the move: {(move.start, move.end)}")
@@ -60,18 +48,9 @@ class NetworkOpponent:
                     self.turn += 1
                     break
 
-                    # Fetching move made by other user
-                    # history = sorted(result['history'], key=lambda x: x['turn'], reverse=True)
-                    # if history:
-                    #     prev_move = history[0]['move']
-                    #     start, end = (literal_eval(x) for x in re.match(r'^((?:[^,]*,){%d}[^,]*),(.*)' % 1, prev_move).groups())
-                    #     move = line.Line(start, end)
-                    #     print(f'Opponent Last Move : {(start, end)}')
-                    #     return move
-                    # continue
-
                 if "Timed out" in turn_status:
                     print('PZ-server said it timed out while waiting for my turn to come up...')
+
                 print('waiting for my turn...')
                 sleep(3)
                 continue
@@ -90,21 +69,10 @@ class NetworkOpponent:
             else:
                 raise ValueError('Unexpected match_status: ' + result["match_status"])
 
-
-
-
     def return_move(self, game: gamestate.HoldThatLine):
         # wait for my turn:
         while True:
-            print('\n\nrequesting await-turn now.')
-            await_turn = self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/await-turn")
-            try:
-                result = await_turn.json()["result"]
-            except json.decoder.JSONDecodeError:
-                print('Unexpected Server Response. Not valid JSON.')
-                sleep(15)
-                continue  # try again after a wait.  Is this a temporary server problem or a client bug?
-
+            result = self._retrieve_current_info()
             print('Update on previous move(s): ' + json.dumps(result))
             if result["match_status"] == "in play":
                 turn_status = result["turn_status"]
@@ -124,7 +92,7 @@ class NetworkOpponent:
 
                 if "Timed out" in turn_status:
                     print('PZ-server said it timed out while waiting for my turn to come up...')
-                print('waiting for my turn...')
+                print('waiting for opponent to move')
                 sleep(3)
                 continue
             elif result["match_status"] in ["game over", "scored, final"]:
@@ -142,20 +110,29 @@ class NetworkOpponent:
             else:
                 raise ValueError('Unexpected match_status: ' + result["match_status"])
 
-
     def fetch_game_history(self):
-        try:
-            return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
-        except Exception:
-            return []
-
+        print('Fetching history...')
+        while True:
+            result = self._retrieve_current_info()
+            if result['match_status'] == 'in play':
+                try:
+                    return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['history']
+                except Exception:
+                    print('Unexpected error while fetching game history, retrying...')
+            else:
+                print(f'Current Match Status: {result["match_status"]}, waiting for match start...')
 
     def fetch_game_players(self):
-        try:
-            return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['players']
-        except Exception:
-            return []
-
+        print('Fetching player info...')
+        while True:
+            result = self._retrieve_current_info()
+            if result['match_status'] == 'in play':
+                try:
+                    return self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['players']
+                except Exception:
+                    print('Unexpected error while fetching player information, retrying...')
+            else:
+                print(f'Current Match Status: {result["match_status"]}, waiting for match start...')
 
     def setup(self):
         # query the available game_types to find the Hold That Line(HTL) id:
@@ -191,6 +168,19 @@ class NetworkOpponent:
 
         self.match_id = request_match.json()['result']['match_id']
 
+    def _retrieve_current_info(self):
+        while True:
+            print('\n\nrequesting await-turn now.')
+            await_turn = self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/await-turn")
+            try:
+                result = await_turn.json()["result"]
+            except json.decoder.JSONDecodeError:
+                print('Unexpected Server Response. Not valid JSON.')
+                sleep(15)
+                continue
+
+            return result
+
 
 class HumanOpponent(Opponent):
 
@@ -199,7 +189,6 @@ class HumanOpponent(Opponent):
             print('Computer has won.')
         else:
             print(f'Computer last move: {(move.start, move.end)}')
-
 
     def return_move(self, game: gamestate.HoldThatLine):
         legal_moves = game.generate_moves()
@@ -213,11 +202,9 @@ class HumanOpponent(Opponent):
 
         return self.make_this_pc_move(game)
 
-
     @staticmethod
     def make_this_pc_move(game: gamestate.HoldThatLine):  # This should be in human opponent
         while True:
-
             # Input Move
             while True:
                 try:
@@ -246,12 +233,14 @@ class HumanOpponent(Opponent):
 
             return move
 
-
     def dispute_move(self, move: line.Line):
         print('Move disputed.')
 
 
 def main(mode='human'):
+    comp_turn = None
+    opponent = None
+
     if mode == 'human':
         print('Human input selected.')
         opponent = HumanOpponent()
@@ -295,7 +284,7 @@ def main(mode='human'):
 
         game = gamestate.HoldThatLine(h, w)
 
-        game_history = opponent.fetch_game_history()
+        game_history = opponent.fetch_game_history()  # this will now block until the game has actually started
         if game_history:
             for move in sorted(game_history, key=lambda x: x['turn']):
                 start, end = (literal_eval(x) for x in
@@ -306,22 +295,25 @@ def main(mode='human'):
 
         players = opponent.fetch_game_players()
         if players:
+            order = 0
             for player in players:
                 if player['netid'] == netid:
                     order = player['player_order']
                     break
 
-            is_odd = order % 2  # TODO: Pass on logic
-            if opponent.turn % 2:
-                comp_turn = is_odd
+            if order:
+                is_odd = order % 2  # TODO: Pass on logic
+                if opponent.turn % 2:
+                    comp_turn = is_odd
+                else:
+                    comp_turn = not is_odd
             else:
-                comp_turn = not is_odd
+                raise ValueError('netid not found in game players')
         else:
-            comp_turn = True
+            raise ValueError('Server sent empty player information')
 
     else:
-        print('no')
-        exit()
+        raise ValueError(f'Invalid mode: {mode}')
 
     # TODO: Determine in-play based on board state
     in_play = True

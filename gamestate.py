@@ -2,7 +2,7 @@
 import itertools
 import random
 import fractions
-from typing import Tuple, List, Union
+from typing import List, Union
 
 # local
 from line import Line
