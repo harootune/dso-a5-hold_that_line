@@ -55,7 +55,7 @@ class NetworkOpponent:
                 sleep(3)
                 continue
             elif result["match_status"] in ["game over", "scored, final"]:
-                players = self.fetch_game_players()
+                players = self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['players']
                 winner = next(player for player in players if player['win_lose_draw'] == 'W')['netid']
                 print(f'Game Over! Winner is : {winner}')
                 return
@@ -96,7 +96,7 @@ class NetworkOpponent:
                 sleep(3)
                 continue
             elif result["match_status"] in ["game over", "scored, final"]:
-                players = self.fetch_game_players()
+                players = self.request_session.get(url=self.game_server_url + f"match/{self.match_id}/history").json()['result']['players']
                 winner = next(player for player in players if player['win_lose_draw'] == 'W')['netid']
                 print(f'Game Over! Winner is : {winner}')
                 return
@@ -349,7 +349,7 @@ def main(mode='human'):
         if in_play:
             comp_turn = not comp_turn
 
-    print(f'{"Computer" if comp_turn else "Opponent"} wins.')
+    # print(f'{"Computer" if comp_turn else "Opponent"} wins.')
 
 
 if __name__ == '__main__':
