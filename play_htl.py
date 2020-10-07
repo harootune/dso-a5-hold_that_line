@@ -4,6 +4,7 @@ import json
 import line
 import re
 import requests
+import docopt
 
 from time import sleep
 from ast import literal_eval
@@ -361,7 +362,11 @@ def main(mode='human', **kwargs):
 
 
 if __name__ == '__main__':
+
+    net = input("Enter netid: ")
+    key = input("Enter player key: ")
+
     main(mode='network',
-         netid='adarsha2',
-         player_key='b8587ad6ce78',
-         game_server_url='https://jweible.web.illinois.edu/pz-server/games/')
+         netid= net,
+         player_key= key,
+         game_server_url='https://jweible.web.illinois.edu/pz-server/games/') #b8587ad6ce78
