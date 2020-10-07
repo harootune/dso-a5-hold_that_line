@@ -1,5 +1,4 @@
 # local
-import argparse
 import gamestate
 import json
 import line
@@ -15,8 +14,10 @@ class Opponent:
     def receive_move(self, move: line.Line):
         raise NotImplementedError()
 
+
     def return_move(self, game: gamestate.HoldThatLine):
         raise NotImplementedError()
+
 
     def dispute_move(self, move: line.Line):
         raise NotImplementedError()
@@ -33,6 +34,7 @@ class NetworkOpponent:
         self.match_id = -1
         self.turn = 1
 
+
     def receive_move(self, move: line.Line):
         this_pc_move_str = f"{str(move.start)},{str(move.end)}"
         while True:
@@ -42,7 +44,7 @@ class NetworkOpponent:
                 print(turn_status)
                 if turn_status == "your turn":  # TODO: Check what happens if opp move
                     result_text = self.request_session.post(url=self.game_server_url + f"match/{self.match_id}/move",
-                                                       json={'move': this_pc_move_str})
+                                                            json={'move': this_pc_move_str})
                     print(f"Computer playing the move: {(move.start, move.end)}")
                     print(f'Result: {result_text.text}')
                     self.turn += 1
@@ -68,6 +70,7 @@ class NetworkOpponent:
                 sleep(5)
             else:
                 raise ValueError('Unexpected match_status: ' + result["match_status"])
+
 
     def return_move(self, game: gamestate.HoldThatLine):
         # wait for my turn:
@@ -110,6 +113,7 @@ class NetworkOpponent:
             else:
                 raise ValueError('Unexpected match_status: ' + result["match_status"])
 
+
     def fetch_game_history(self):
         print('Fetching history...')
         while True:
@@ -122,6 +126,7 @@ class NetworkOpponent:
             else:
                 print(f'Current Match Status: {result["match_status"]}, waiting for match start...')
 
+
     def fetch_game_players(self):
         print('Fetching player info...')
         while True:
@@ -133,6 +138,7 @@ class NetworkOpponent:
                     print('Unexpected error while fetching player information, retrying...')
             else:
                 print(f'Current Match Status: {result["match_status"]}, waiting for match start...')
+
 
     def setup(self):
         # query the available game_types to find the Hold That Line(HTL) id:
@@ -168,8 +174,10 @@ class NetworkOpponent:
 
         self.match_id = request_match.json()['result']['match_id']
 
+
     def dispute_move(self, move: line.Line):
         print("Disputing network opponent's move. This should not have happened and is likely caused by a gamestate desync.")
+
 
     def _retrieve_current_info(self):
         while True:
@@ -193,6 +201,7 @@ class HumanOpponent(Opponent):
         else:
             print(f'Computer last move: {(move.start, move.end)}')
 
+
     def return_move(self, game: gamestate.HoldThatLine):
         legal_moves = game.generate_moves()
         if not legal_moves:
@@ -204,6 +213,7 @@ class HumanOpponent(Opponent):
         print(f'Possible moves: {[(l.start, l.end) for l in legal_moves] if game.endpoints else "Any"}')
 
         return self.make_this_pc_move(game)
+
 
     @staticmethod
     def make_this_pc_move(game: gamestate.HoldThatLine):  # This should be in human opponent
@@ -236,13 +246,13 @@ class HumanOpponent(Opponent):
 
             return move
 
+
     def dispute_move(self, move: line.Line):
         print('Move disputed.')
 
 
-def main(mode='human'):
+def main(mode='human', **kwargs):
     comp_turn = None
-    opponent = None
 
     if mode == 'human':
         print('Human input selected.')
@@ -278,9 +288,9 @@ def main(mode='human'):
             break
 
     elif mode == 'network':
-        netid = 'dhotis2'
-        player_key = '041b1a48349a'
-        game_server_url = 'https://jweible.web.illinois.edu/pz-server/games/'
+        netid = kwargs.get('netid')
+        player_key = kwargs.get('player_key')
+        game_server_url = kwargs.get('game_server_url')
         opponent = NetworkOpponent(game_server_url, netid, player_key)
         opponent.setup()
         h = w = 4
@@ -349,13 +359,9 @@ def main(mode='human'):
         if in_play:
             comp_turn = not comp_turn
 
-    # print(f'{"Computer" if comp_turn else "Opponent"} wins.')
-
 
 if __name__ == '__main__':
-    desc = 'Simulate a game of Hold-That-Line, either over the network or with human input'
-    # parser = argparse.ArgumentParser(description=desc)
-    # parser.add_argument('mode', type=str, choices=['human', 'network'],help='Whether to play with human or network input')
-    # args = parser.parse_args()
-    # main(mode=args.mode)
-    main(mode='network')
+    main(mode='network',
+         netid='adarsha2',
+         player_key='b8587ad6ce78',
+         game_server_url='https://jweible.web.illinois.edu/pz-server/games/')
