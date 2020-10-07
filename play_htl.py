@@ -168,6 +168,9 @@ class NetworkOpponent:
 
         self.match_id = request_match.json()['result']['match_id']
 
+    def dispute_move(self, move: line.Line):
+        print("Disputing network opponent's move. This should not have happened and is likely caused by a gamestate desync.")
+
     def _retrieve_current_info(self):
         while True:
             print('\n\nrequesting await-turn now.')
@@ -319,27 +322,23 @@ def main(mode='human'):
     in_play = True
     while in_play:
         if comp_turn:
-            print('Computer Turn')
             move = game.pick_move()
             if move is None:
                 in_play = False
             else:
-                print(f'Move: {(move.start, move.end) if move else "{}"}')
                 game.make_move(move)
                 opponent.receive_move(move)
         else:
-            print('Opponent Turn')
             valid = False
             while not valid:
                 move = opponent.return_move(game)
-                print(f'Move: {(move.start, move.end) if move else "{}"}')
                 if move is not None:
                     valid = game.check_move(move) or move is None
                 else:
                     valid = True
 
                 if not valid:
-                    print('Invalid move. Prompting opponent for correction.')  # TODO: Figure out what happens if the network gives us a bad move
+                    print('Invalid move. Prompting opponent for correction.')
                     opponent.dispute_move(move)
 
             if move is None:
